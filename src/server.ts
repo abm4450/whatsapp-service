@@ -40,8 +40,9 @@ const { Client, LocalAuth } = whatsappPkg as typeof whatsappPkg;
 const whatsappClient = new Client({
   authStrategy: new LocalAuth({ clientId: "rentalflow" }),
   puppeteer: {
-    headless: false,
+    headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
   },
 });
 
