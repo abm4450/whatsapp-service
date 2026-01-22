@@ -3,7 +3,19 @@ import express from "express";
 import fs from "node:fs";
 import QRCode from "qrcode";
 import qrcodeTerminal from "qrcode-terminal";
-import makeWASocket, { DisconnectReason, useMultiFileAuthState } from "@whiskeysockets/baileys";
+<<<<<<< HEAD
+import makeWASocket, {
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  useMultiFileAuthState,
+} from "@whiskeysockets/baileys";
+=======
+import makeWASocket, {
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  useMultiFileAuthState,
+} from "@whiskeysockets/baileys";
+>>>>>>> 47ac2c9 (update whatsapp-service)
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
@@ -419,10 +431,16 @@ const clearAuthStorage = async () => {
 const startWhatsApp = async () => {
   await loadAuthFromStorage();
   const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  console.log(`Using Baileys version ${version.join(".")} (latest: ${isLatest})`);
   const socket = makeWASocket({
     auth: state,
-    printQRInTerminal: true,
     browser: ["RentalFlow", "Chrome", "1.0.0"],
+    version,
+    markOnlineOnConnect: false,
+    syncFullHistory: false,
+    connectTimeoutMs: 60_000,
+    keepAliveIntervalMs: 20_000,
   });
 
   socket.ev.on("creds.update", async () => {
@@ -433,6 +451,7 @@ const startWhatsApp = async () => {
   socket.ev.on("connection.update", async (update) => {
     const { connection, qr, lastDisconnect } = update;
     if (qr) {
+      console.log("Received WhatsApp QR code");
       qrcodeTerminal.generate(qr, { small: true });
       const qrCode = await QRCode.toDataURL(qr);
       await safeUpdateStatus({ status: "connecting", qr_code: qrCode, last_error: null });
