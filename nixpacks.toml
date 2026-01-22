@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["chromium"]
+nixPkgs = ["nodejs_20", "chromium"]
 
 [variables]
 PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium"
