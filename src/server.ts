@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import fs from "node:fs";
 import QRCode from "qrcode";
 import qrcodeTerminal from "qrcode-terminal";
 import whatsappPkg from "whatsapp-web.js";
@@ -37,12 +38,29 @@ const updateStatus = async (updates: Record<string, unknown>) => {
 
 const { Client, LocalAuth } = whatsappPkg as typeof whatsappPkg;
 
+const candidateExecutablePaths = [
+  process.env.PUPPETEER_EXECUTABLE_PATH,
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/lib/chromium/chromium",
+  "/usr/bin/google-chrome-stable",
+].filter(Boolean) as string[];
+
+const executablePath = candidateExecutablePaths.find((path) => fs.existsSync(path));
+if (executablePath) {
+  console.log(`Using Chromium executable at ${executablePath}`);
+} else {
+  console.warn(
+    `Chromium executable not found. Checked: ${candidateExecutablePaths.join(", ")}`
+  );
+}
+
 const whatsappClient = new Client({
   authStrategy: new LocalAuth({ clientId: "rentalflow" }),
   puppeteer: {
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+    executablePath,
   },
 });
 
