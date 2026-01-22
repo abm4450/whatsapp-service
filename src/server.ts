@@ -3,11 +3,7 @@ import express from "express";
 import fs from "node:fs";
 import QRCode from "qrcode";
 import qrcodeTerminal from "qrcode-terminal";
-import makeWASocket, {
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  useMultiFileAuthState,
-} from "@whiskeysockets/baileys";
+import whatsappPkg from "whatsapp-web.js";
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
@@ -342,150 +338,58 @@ const panelHtml = `<!doctype html>
   </body>
 </html>`;
 
-const authFolder = process.env.BAILEYS_AUTH_FOLDER ?? "./.baileys_auth";
-const storageBucket = process.env.BAILEYS_STORAGE_BUCKET ?? "whatsapp-auth";
-const storagePrefix = process.env.BAILEYS_STORAGE_PREFIX ?? "baileys";
-const storageClient = supabase.storage.from(storageBucket);
-let waSocket: ReturnType<typeof makeWASocket> | null = null;
-
 const safeUpdateStatus = (updates: Record<string, unknown>) =>
   updateStatus(updates).catch(() => undefined);
 
-const parseConnectedNumber = (jid?: string | null) => {
-  if (!jid) return null;
-  const base = jid.split("@")[0] ?? "";
-  return base.split(":")[0] ?? null;
+const { Client, LocalAuth } = whatsappPkg as typeof whatsappPkg;
+const webVersion = process.env.WHATSAPP_WEB_VERSION ?? "2.2412.54";
+const webVersionCache = {
+  type: "remote" as const,
+  remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html",
 };
 
-const ensureAuthFolder = () => {
-  fs.mkdirSync(authFolder, { recursive: true });
-};
+const whatsappClient = new Client({
+  authStrategy: new LocalAuth({ clientId: "rentalflow" }),
+  webVersion,
+  webVersionCache,
+  puppeteer: {
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+    ],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+  },
+});
 
-const ensureStorageBucket = async () => {
-  const { error } = await supabase.storage.createBucket(storageBucket, {
-    public: false,
-    fileSizeLimit: 10 * 1024 * 1024,
+whatsappClient.on("qr", async (qr) => {
+  console.log("Received WhatsApp QR code");
+  qrcodeTerminal.generate(qr, { small: true });
+  const qrCode = await QRCode.toDataURL(qr);
+  await safeUpdateStatus({ status: "connecting", qr_code: qrCode, last_error: null });
+});
+
+whatsappClient.on("ready", async () => {
+  const info = whatsappClient.info;
+  await safeUpdateStatus({
+    status: "connected",
+    connected_number: info?.wid?.user ?? null,
+    last_connected_at: new Date().toISOString(),
+    qr_code: null,
+    last_error: null,
   });
-  if (error && !error.message?.includes("already exists")) {
-    console.warn("Storage bucket create failed:", error.message);
-  }
-};
+});
 
-const loadAuthFromStorage = async () => {
-  ensureAuthFolder();
-  await ensureStorageBucket();
-  const { data, error } = await storageClient.list(storagePrefix, { limit: 1000 });
-  if (error) {
-    console.warn("Failed to list auth files:", error.message);
-    return;
-  }
-  if (!data?.length) return;
-  await Promise.all(
-    data
-      .filter((item) => item.name && !item.name.endsWith("/"))
-      .map(async (item) => {
-        const filePath = `${storagePrefix}/${item.name}`;
-        const download = await storageClient.download(filePath);
-        if (download.error || !download.data) {
-          console.warn("Failed to download auth file:", filePath);
-          return;
-        }
-        const buffer = Buffer.from(await download.data.arrayBuffer());
-        fs.writeFileSync(`${authFolder}/${item.name}`, buffer);
-      })
-  );
-};
+whatsappClient.on("disconnected", async (reason) => {
+  await safeUpdateStatus({ status: "disconnected", last_error: String(reason) });
+});
 
-const syncAuthToStorage = async () => {
-  ensureAuthFolder();
-  const entries = fs.readdirSync(authFolder);
-  await Promise.all(
-    entries.map(async (name) => {
-      const content = fs.readFileSync(`${authFolder}/${name}`);
-      const path = `${storagePrefix}/${name}`;
-      const { error } = await storageClient.upload(path, content, {
-        upsert: true,
-        contentType: "application/json",
-      });
-      if (error) {
-        console.warn("Failed to upload auth file:", name, error.message);
-      }
-    })
-  );
-};
-
-const clearAuthStorage = async () => {
-  const { data, error } = await storageClient.list(storagePrefix, { limit: 1000 });
-  if (error || !data?.length) return;
-  await storageClient.remove(data.map((item) => `${storagePrefix}/${item.name}`));
-};
-
-const startWhatsApp = async () => {
-  await loadAuthFromStorage();
-  const { state, saveCreds } = await useMultiFileAuthState(authFolder);
-  const { version, isLatest } = await fetchLatestBaileysVersion();
-  console.log(`Using Baileys version ${version.join(".")} (latest: ${isLatest})`);
-  const socket = makeWASocket({
-    auth: state,
-    browser: ["RentalFlow", "Chrome", "1.0.0"],
-    version,
-    markOnlineOnConnect: false,
-    syncFullHistory: false,
-    connectTimeoutMs: 60_000,
-    keepAliveIntervalMs: 20_000,
-  });
-
-  socket.ev.on("creds.update", async () => {
-    await saveCreds();
-    await syncAuthToStorage();
-  });
-
-  socket.ev.on("connection.update", async (update) => {
-    const { connection, qr, lastDisconnect } = update;
-    if (qr) {
-      console.log("Received WhatsApp QR code");
-      qrcodeTerminal.generate(qr, { small: true });
-      const qrCode = await QRCode.toDataURL(qr);
-      await safeUpdateStatus({ status: "connecting", qr_code: qrCode, last_error: null });
-    }
-
-    if (connection === "open") {
-      const connectedNumber = parseConnectedNumber(socket.user?.id);
-      await safeUpdateStatus({
-        status: "connected",
-        connected_number: connectedNumber,
-        last_connected_at: new Date().toISOString(),
-        qr_code: null,
-        last_error: null,
-      });
-    }
-
-    if (connection === "close") {
-      const reasonCode = (lastDisconnect?.error as { output?: { statusCode?: number } })
-        ?.output?.statusCode;
-      const reasonMessage = (lastDisconnect?.error as { message?: string })?.message ?? "unknown";
-      const reasonText =
-        reasonCode === DisconnectReason.loggedOut
-          ? "Logged out"
-          : `Connection closed (${reasonCode ?? "unknown"}): ${reasonMessage}`;
-      console.error("WhatsApp connection closed", {
-        reasonCode,
-        reasonMessage,
-      });
-      await safeUpdateStatus({ status: "disconnected", last_error: reasonText });
-
-      if (reasonCode !== DisconnectReason.loggedOut) {
-        setTimeout(() => {
-          startWhatsApp().catch((error) => {
-            console.error("Reconnect failed", error);
-          });
-        }, 5000);
-      }
-    }
-  });
-
-  waSocket = socket;
-};
+whatsappClient.on("auth_failure", async (message) => {
+  await safeUpdateStatus({ status: "disconnected", last_error: String(message) });
+});
 
 setInterval(() => {
   updateStatus({ heartbeat_at: new Date().toISOString() }).catch(() => undefined);
@@ -513,12 +417,12 @@ app.post("/api/send-otp", requireToken, async (req, res) => {
   }
 
   try {
-    if (!waSocket || !waSocket.user) {
+    if (!whatsappClient.info?.wid?.user) {
       return res.status(503).json({ message: "WhatsApp service is not connected." });
     }
     const normalized = String(phoneNumber).replace(/[^\d]/g, "");
-    const chatId = `${normalized}@s.whatsapp.net`;
-    await waSocket.sendMessage(chatId, { text: message });
+    const chatId = normalized.includes("@c.us") ? normalized : `${normalized}@c.us`;
+    await whatsappClient.sendMessage(chatId, message);
     return res.json({ success: true });
   } catch (error) {
     await updateStatus({ last_error: (error as Error).message });
@@ -533,16 +437,15 @@ app.post("/api/control", requireToken, async (req, res) => {
   }
 
   if (action === "restart") {
-    if (waSocket?.end) waSocket.end(new Error("restart"));
-    await startWhatsApp();
+    await whatsappClient.destroy();
+    await whatsappClient.initialize();
   } else if (action === "logout") {
-    if (waSocket?.logout) await waSocket.logout();
-    await clearAuthStorage();
+    await whatsappClient.logout();
   } else if (action === "clear_session") {
-    if (waSocket?.logout) await waSocket.logout();
-    fs.rmSync(authFolder, { recursive: true, force: true });
-    await clearAuthStorage();
-    await startWhatsApp();
+    await whatsappClient.logout();
+    await whatsappClient.destroy();
+    fs.rmSync(".wwebjs_auth", { recursive: true, force: true });
+    await whatsappClient.initialize();
   } else {
     return res.status(400).json({ message: "Invalid action." });
   }
@@ -550,7 +453,7 @@ app.post("/api/control", requireToken, async (req, res) => {
   return res.json({ success: true });
 });
 
-startWhatsApp().catch((error) => {
+whatsappClient.initialize().catch((error) => {
   console.error("Failed to start WhatsApp", error);
   safeUpdateStatus({ status: "disconnected", last_error: "Failed to start WhatsApp" });
 });
