@@ -41,7 +41,6 @@ const { Client, LocalAuth } = whatsappPkg as typeof whatsappPkg;
 const candidateExecutablePaths = [
   process.env.PUPPETEER_EXECUTABLE_PATH,
   "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
   "/usr/lib/chromium/chromium",
   "/usr/bin/google-chrome-stable",
 ].filter(Boolean) as string[];
