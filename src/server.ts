@@ -371,8 +371,19 @@ if (executablePath) {
   );
 }
 
+const webVersion =
+  process.env.WHATSAPP_WEB_VERSION ?? "2.3000.1030363889-alpha";
+const webVersionCache = {
+  type: "remote" as const,
+  remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html",
+};
+
+console.log(`Using WhatsApp Web version ${webVersion}`);
+
 const whatsappClient = new Client({
   authStrategy: new LocalAuth({ clientId: "rentalflow" }),
+  webVersion,
+  webVersionCache,
   puppeteer: {
     headless: true,
     args: [
