@@ -340,8 +340,23 @@ const panelHtml = `<!doctype html>
 
 const { Client, LocalAuth } = whatsappPkg as typeof whatsappPkg;
 
+const findNixStoreChromium = () => {
+  try {
+    const entries = fs.readdirSync("/nix/store");
+    for (const entry of entries) {
+      if (!entry.includes("chromium")) continue;
+      const candidate = `/nix/store/${entry}/bin/chromium`;
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } catch {
+    // Ignore if nix store is unavailable.
+  }
+  return undefined;
+};
+
 const candidateExecutablePaths = [
   process.env.PUPPETEER_EXECUTABLE_PATH,
+  findNixStoreChromium(),
   "/usr/bin/chromium",
   "/usr/lib/chromium/chromium",
   "/usr/bin/google-chrome-stable",
