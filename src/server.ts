@@ -372,7 +372,7 @@ if (executablePath) {
 }
 
 const webVersion =
-  process.env.WHATSAPP_WEB_VERSION ?? "2.3000.1030363889-alpha";
+  process.env.WHATSAPP_WEB_VERSION ?? "2.2412.54";
 const webVersionCache = {
   type: "remote" as const,
   remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html",
@@ -392,7 +392,6 @@ const whatsappClient = new Client({
       "--disable-dev-shm-usage",
       "--disable-gpu",
       "--no-zygote",
-      "--single-process",
     ],
     executablePath,
   },
