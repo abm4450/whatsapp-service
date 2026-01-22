@@ -509,7 +509,7 @@ app.post("/api/control", requireToken, async (req, res) => {
   }
 
   if (action === "restart") {
-    if (waSocket?.end) waSocket.end();
+    if (waSocket?.end) waSocket.end(new Error("restart"));
     await startWhatsApp();
   } else if (action === "logout") {
     if (waSocket?.logout) await waSocket.logout();
