@@ -3,19 +3,11 @@ import express from "express";
 import fs from "node:fs";
 import QRCode from "qrcode";
 import qrcodeTerminal from "qrcode-terminal";
-<<<<<<< HEAD
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
-=======
-import makeWASocket, {
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  useMultiFileAuthState,
-} from "@whiskeysockets/baileys";
->>>>>>> 47ac2c9 (update whatsapp-service)
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
