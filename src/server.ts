@@ -452,11 +452,24 @@ const startWhatsApp = async () => {
     if (connection === "close") {
       const reasonCode = (lastDisconnect?.error as { output?: { statusCode?: number } })
         ?.output?.statusCode;
+      const reasonMessage = (lastDisconnect?.error as { message?: string })?.message ?? "unknown";
       const reasonText =
         reasonCode === DisconnectReason.loggedOut
           ? "Logged out"
-          : `Connection closed (${reasonCode ?? "unknown"})`;
+          : `Connection closed (${reasonCode ?? "unknown"}): ${reasonMessage}`;
+      console.error("WhatsApp connection closed", {
+        reasonCode,
+        reasonMessage,
+      });
       await safeUpdateStatus({ status: "disconnected", last_error: reasonText });
+
+      if (reasonCode !== DisconnectReason.loggedOut) {
+        setTimeout(() => {
+          startWhatsApp().catch((error) => {
+            console.error("Reconnect failed", error);
+          });
+        }, 5000);
+      }
     }
   });
 
